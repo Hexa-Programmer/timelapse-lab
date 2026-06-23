@@ -41,6 +41,39 @@
     z-index: 999;
   }
 
+  #splashScreen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s ease-out, visibility 0.5s;
+  }
+  .splash-logo {
+    font-family: var(--font-display);
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: 8px;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    animation: splashPulse 2s infinite alternate;
+  }
+  .splash-logo span { color: var(--text); font-weight: 300; }
+  .splash-sub {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+  @keyframes splashPulse {
+    0% { text-shadow: 0 0 5px rgba(245,166,35,0.2); }
+    100% { text-shadow: 0 0 20px rgba(245,166,35,0.6); }
+  }
+
   header {
     border-bottom: 1px solid var(--border);
     padding: 16px 32px;
@@ -254,7 +287,6 @@
     background: linear-gradient(to right, var(--amber) 0%, var(--amber) var(--pct,0%), var(--border) var(--pct,0%));
   }
 
-  /* toggle */
   .toggle-row {
     display: flex;
     align-items: center;
@@ -370,6 +402,11 @@
 </head>
 <body>
 
+<div id="splashScreen">
+  <div class="splash-logo">Welcome to Time<span>lapse</span>-Lab</div>
+  <div class="splash-sub">Initializing System Core...</div>
+</div>
+
 <header>
   <div class="logo">Time<span>lapse</span> Lab</div>
   <div class="sys-status">
@@ -389,7 +426,6 @@
   <div class="preview-panel">
     <div class="panel-label" id="previewLabel">Camera Feed</div>
 
-    <!-- Camera frame -->
     <div class="video-frame cam-frame" id="camFrame">
       <video id="liveVideo" autoplay muted playsinline></video>
       <div class="corner tl"></div><div class="corner tr"></div>
@@ -399,7 +435,6 @@
       <div class="timecode-overlay" id="camTimecode">00:00:00</div>
     </div>
 
-    <!-- Screen frame -->
     <div class="video-frame scrn-frame" id="scrnFrame" style="display:none;">
       <div class="screen-placeholder" id="scrnPlaceholder">
         <div class="big">🖥️</div>
@@ -431,7 +466,6 @@
       <div class="stat-row"><span>RESOLUTION</span><span id="statRes">—</span></div>
     </div>
 
-    <!-- Clock overlay -->
     <div class="control-group">
       <div class="ctrl-title">Clock Overlay</div>
       <div class="toggle-row">
@@ -457,9 +491,19 @@
       <div class="ctrl-title">Capture Interval</div>
       <div class="slider-wrap">
         <label>Frame every <span id="intervalVal">500</span>ms</label>
-        <input type="range" id="intervalSlider" min="100" max="10000" step="100" value="500">
+        <input type="range" id="intervalSlider" min="100" max="60000" step="100" value="500">
       </div>
-      <div style="font-size:0.62rem;color:var(--muted);">Lower = smoother video, more storage</div>
+      <div class="toggle-row">
+        <span>Quick Preset</span>
+        <select id="presetSelect" style="background:var(--surface); color:var(--text); border:1px solid var(--border); font-family:var(--font-mono); font-size:0.68rem; padding:2px 4px; outline:none; cursor:pointer;">
+          <option value="custom">Custom Slider</option>
+          <option value="1000">Hyperlapse (1s)</option>
+          <option value="5000">Clouds/Traffic (5s)</option>
+          <option value="30000">People/Sunsets (30s)</option>
+          <option value="60000">Long Session (1m)</option>
+        </select>
+      </div>
+      <div style="font-size:0.62rem;color:var(--muted);margin-top:6px;">Lower = smoother video, more storage</div>
     </div>
 
     <div class="control-group">
@@ -512,7 +556,16 @@
 <canvas id="offscreen"></canvas>
 
 <script>
-// ── STATE ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const splash = document.getElementById('splashScreen');
+    splash.style.opacity = '0';
+    setTimeout(() => {
+      splash.style.visibility = 'hidden';
+    }, 500);
+  }, 2000);
+});
+
 let mode = 'camera';
 let camStream = null;
 let scrnStream = null;
@@ -535,12 +588,10 @@ const ctx        = offscreen.getContext('2d');
 const scrnPreview = document.getElementById('scrnPreview');
 const scrnPrevCtx = scrnPreview.getContext('2d');
 
-// ── WALL CLOCK ──────────────────────────────────────────────────────────────
 setInterval(() => {
   document.getElementById('sysTime').textContent = new Date().toLocaleTimeString();
 }, 500);
 
-// ── MODE SWITCH ─────────────────────────────────────────────────────────────
 function switchMode(m) {
   if (isRecording) { showToast('Stop recording before switching mode'); return; }
   mode = m;
@@ -571,16 +622,26 @@ function resetSession() {
   document.getElementById('scrnTimecode').textContent = '00:00:00';
 }
 
-// ── SLIDERS ─────────────────────────────────────────────────────────────────
 document.getElementById('intervalSlider').addEventListener('input', function() {
   captureIntervalMs = parseInt(this.value);
-  document.getElementById('intervalVal').textContent = captureIntervalMs;
+  document.getElementById('intervalVal').textContent = captureIntervalMs >= 1000 ? `${(captureIntervalMs/1000).toFixed(1)}s` : `${captureIntervalMs}ms`;
+  document.getElementById('presetSelect').value = 'custom';
   updateSliderFill(this); updateStats();
 });
 document.getElementById('fpsSlider').addEventListener('input', function() {
   outputFPS = parseInt(this.value);
   document.getElementById('fpsVal').textContent = outputFPS;
   updateSliderFill(this); updateStats();
+});
+document.getElementById('presetSelect').addEventListener('change', function() {
+  if (this.value !== 'custom') {
+    captureIntervalMs = parseInt(this.value);
+    const slider = document.getElementById('intervalSlider');
+    slider.value = captureIntervalMs;
+    document.getElementById('intervalVal').textContent = captureIntervalMs >= 1000 ? `${(captureIntervalMs/1000).toFixed(0)}s` : `${captureIntervalMs}ms`;
+    updateSliderFill(slider);
+    updateStats();
+  }
 });
 function updateSliderFill(s) {
   const pct = ((s.value - s.min) / (s.max - s.min)) * 100;
@@ -596,7 +657,6 @@ function updateStats() {
   if (n > 0) document.getElementById('statOut').textContent = `~${(n/outputFPS).toFixed(1)}s`;
 }
 
-// ── CLOCK BURN-IN ───────────────────────────────────────────────────────────
 function burnClock(targetCtx, w, h) {
   if (!document.getElementById('clockToggle').checked) return;
   const showDate = document.getElementById('dateToggle').checked;
@@ -615,19 +675,16 @@ function burnClock(targetCtx, w, h) {
   const boxH = lines.length * lineH + padY * 2 - 4;
   const bx = w - boxW - 12, by = h - boxH - 12;
 
-  // shadow box
   targetCtx.fillStyle = 'rgba(0,0,0,0.68)';
   targetCtx.beginPath();
   if (targetCtx.roundRect) targetCtx.roundRect(bx, by, boxW, boxH, 4);
   else { targetCtx.rect(bx, by, boxW, boxH); }
   targetCtx.fill();
 
-  // amber border
   targetCtx.strokeStyle = 'rgba(245,166,35,0.75)';
   targetCtx.lineWidth = 1;
   targetCtx.stroke();
 
-  // text
   targetCtx.fillStyle = '#f5a623';
   lines.forEach((line, i) => {
     targetCtx.fillText(line, bx + padX, by + padY + fs + i * lineH);
@@ -635,7 +692,6 @@ function burnClock(targetCtx, w, h) {
   targetCtx.restore();
 }
 
-// ── CAMERA INIT ─────────────────────────────────────────────────────────────
 async function initCamera() {
   try {
     camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
@@ -652,7 +708,6 @@ async function initCamera() {
   }
 }
 
-// ── SCREEN CAPTURE ───────────────────────────────────────────────────────────
 async function toggleScreen() {
   if (!isRecording) {
     try {
@@ -672,7 +727,6 @@ async function toggleScreen() {
       document.getElementById('scrnPlaceholder').style.display = 'none';
       scrnPreview.style.display = 'block';
 
-      // Live preview loop
       function previewLoop() {
         if (!scrnStream || !scrnStream.active) return;
         scrnPrevCtx.drawImage(scrnHiddenVideo, 0, 0, scrnPreview.width, scrnPreview.height);
@@ -680,7 +734,6 @@ async function toggleScreen() {
       }
       previewLoop();
 
-      // User stopped sharing from browser UI
       scrnStream.getVideoTracks()[0].onended = () => {
         if (isRecording) stopRecording();
         stopScreenPreview();
@@ -706,7 +759,6 @@ function stopScreenPreview() {
   document.getElementById('scrnStatus').textContent = 'SCREEN IDLE';
 }
 
-// ── RECORD ──────────────────────────────────────────────────────────────────
 function toggleRecord() {
   if (!camStream) { showToast('Camera not ready'); return; }
   isRecording ? stopRecording() : startRecording();
@@ -766,7 +818,6 @@ function stopRecording() {
   clearInterval(captureInterval);
   clearInterval(timecodeInterval);
 
-  // Reset both buttons
   document.getElementById('recordBtn').classList.remove('recording');
   document.getElementById('recordLabel').textContent = 'Start Recording';
   document.getElementById('recordIcon').textContent  = '⏺';
@@ -790,7 +841,6 @@ function stopRecording() {
   }
 }
 
-// ── GENERATE ────────────────────────────────────────────────────────────────
 async function generateTimelapse() {
   if (frames.length === 0) { showToast('No frames captured'); return; }
 
@@ -869,7 +919,6 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-// ── BOOT ─────────────────────────────────────────────────────────────────────
 initCamera();
 </script>
 </body>
